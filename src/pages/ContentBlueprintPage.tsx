@@ -204,8 +204,14 @@ function ContentBlueprintPage() {
           const webhookData = await webhookResponse.json();
           console.log('Webhook response data:', webhookData);
 
-          generatedText = webhookData.text || webhookData.generated_text || null;
-          generatedImageUrl = webhookData.url || webhookData.image_url || webhookData.generated_image_url || null;
+          if (Array.isArray(webhookData) && webhookData.length > 0) {
+            const responseData = webhookData[0];
+            generatedText = responseData.facebookOutput?.[0] || null;
+            generatedImageUrl = responseData.url?.[0] || null;
+          } else {
+            generatedText = webhookData.text || webhookData.generated_text || webhookData.facebookOutput?.[0] || null;
+            generatedImageUrl = webhookData.url?.[0] || webhookData.image_url || webhookData.generated_image_url || null;
+          }
 
           console.log('Extracted from webhook - Text:', generatedText, 'Image URL:', generatedImageUrl);
 
