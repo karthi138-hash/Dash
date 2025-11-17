@@ -185,7 +185,9 @@ function ContentBlueprintPage() {
       let generatedImageUrl = null;
 
       try {
-        console.log('Sending webhook request to: https://myaistaff.app.n8n.cloud/webhook-test/PostBluePrint');
+        console.log('=== WEBHOOK REQUEST START ===');
+        console.log('Webhook URL: https://myaistaff.app.n8n.cloud/webhook-test/PostBluePrint');
+        console.log('Payload:', JSON.stringify({ ...webhookPayload, draft_id: draftId }, null, 2));
 
         const webhookResponse = await fetch('https://myaistaff.app.n8n.cloud/webhook-test/PostBluePrint', {
           method: 'POST',
@@ -198,51 +200,80 @@ function ContentBlueprintPage() {
           }),
         });
 
-        console.log('Webhook response received - Status:', webhookResponse.status, 'OK:', webhookResponse.ok);
+        console.log('Webhook response status:', webhookResponse.status);
+        console.log('Webhook response ok:', webhookResponse.ok);
+        console.log('Webhook response headers:', Object.fromEntries(webhookResponse.headers.entries()));
 
         if (webhookResponse.ok) {
-          const webhookData = await webhookResponse.json();
-          console.log('Webhook response data:', webhookData);
+          const responseText = await webhookResponse.text();
+          console.log('Raw webhook response:', responseText);
+
+          let webhookData;
+          try {
+            webhookData = JSON.parse(responseText);
+            console.log('Parsed webhook data:', JSON.stringify(webhookData, null, 2));
+          } catch (parseError) {
+            console.error('Failed to parse webhook response as JSON:', parseError);
+            throw new Error('Webhook returned invalid JSON');
+          }
 
           if (Array.isArray(webhookData) && webhookData.length > 0) {
             const responseData = webhookData[0];
+            console.log('Processing array response, first element:', responseData);
             generatedText = responseData.facebookOutput?.[0] || null;
             generatedImageUrl = responseData.url?.[0] || null;
-          } else {
+          } else if (typeof webhookData === 'object' && webhookData !== null) {
+            console.log('Processing object response');
             generatedText = webhookData.text || webhookData.generated_text || webhookData.facebookOutput?.[0] || null;
             generatedImageUrl = webhookData.url?.[0] || webhookData.image_url || webhookData.generated_image_url || null;
           }
 
-          console.log('Extracted from webhook - Text:', generatedText, 'Image URL:', generatedImageUrl);
+          console.log('=== EXTRACTED DATA ===');
+          console.log('Generated Text:', generatedText);
+          console.log('Generated Image URL:', generatedImageUrl);
 
-          if (draftId && (generatedText || generatedImageUrl)) {
-            const { error: updateError } = await supabase
-              .from('content_drafts')
-              .update({
+          if (draftId) {
+            if (generatedText || generatedImageUrl) {
+              console.log('=== UPDATING DATABASE ===');
+              console.log('Draft ID:', draftId);
+
+              const updateData = {
                 generated_text: generatedText,
                 generated_image_url: generatedImageUrl,
                 generated_at: new Date().toISOString(),
                 status: 'content_generated',
-              })
-              .eq('id', draftId);
+              };
 
-            if (updateError) {
-              console.error('Error updating draft with generated content:', updateError);
+              console.log('Update data:', updateData);
+
+              const { data: updateResult, error: updateError } = await supabase
+                .from('content_drafts')
+                .update(updateData)
+                .eq('id', draftId)
+                .select();
+
+              if (updateError) {
+                console.error('❌ DATABASE UPDATE FAILED:', updateError);
+              } else {
+                console.log('✅ DATABASE UPDATE SUCCESS:', updateResult);
+              }
             } else {
-              console.log('Draft updated successfully with generated content');
+              console.warn('⚠️ No generated content found in webhook response - database not updated');
             }
+          } else {
+            console.error('❌ No draft ID available for update');
           }
         } else {
           const errorText = await webhookResponse.text();
-          console.error('Webhook returned non-OK status:', webhookResponse.status, 'Response:', errorText);
+          console.error('❌ Webhook returned non-OK status:', webhookResponse.status);
+          console.error('Error response:', errorText);
         }
+        console.log('=== WEBHOOK REQUEST END ===');
       } catch (webhookError: any) {
-        console.error('Webhook request failed with error:', webhookError);
-        console.error('Error details:', {
-          message: webhookError.message,
-          name: webhookError.name,
-          stack: webhookError.stack
-        });
+        console.error('❌ WEBHOOK REQUEST FAILED');
+        console.error('Error message:', webhookError.message);
+        console.error('Error name:', webhookError.name);
+        console.error('Error stack:', webhookError.stack);
       }
 
       setSuccess('Data successfully submitted! Your post is being generated.');
