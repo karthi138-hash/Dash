@@ -92,33 +92,31 @@ function ContentReviewPage() {
     setError(null);
 
     try {
-      const approvalPayload = {
-        user_id: user?.id,
-        email: user?.email,
+      const { error: updateError } = await supabase
+        .from('content_drafts')
+        .update({ status: 'content_generated_approved' })
+        .eq('id', latestDraft.id);
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      const webhookPayload = {
         draft_id: latestDraft.id,
-        status: 'approved',
-        content_text: latestDraft.generated_text,
-        image_url: latestDraft.generated_image_url,
-        platform: latestDraft.platform,
-        approved_at: new Date().toISOString(),
       };
 
-      const webhookResponse = await fetch('https://myaistaff.app.n8n.cloud/webhook/ApprovedPost', {
+      await fetch('https://myaistaff.app.n8n.cloud/webhook-test/Approved', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(approvalPayload),
+        body: JSON.stringify(webhookPayload),
       });
 
-      console.log('Approval webhook sent, status:', webhookResponse.status);
-
-      await supabase
-        .from('content_drafts')
-        .update({ status: 'approved' })
-        .eq('id', latestDraft.id);
-
-      navigate('/content-blueprint');
+      setError(null);
+      setTimeout(() => {
+        navigate('/content-blueprint');
+      }, 500);
     } catch (err: any) {
       console.error('Error approving content:', err);
       setError('Failed to approve content. Please try again.');
@@ -127,8 +125,28 @@ function ContentReviewPage() {
     }
   };
 
-  const handleReject = () => {
-    navigate('/content-blueprint');
+  const handleReject = async () => {
+    if (!latestDraft) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const { error: updateError } = await supabase
+        .from('content_drafts')
+        .update({ status: 'content_generated_Rejected' })
+        .eq('id', latestDraft.id);
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      navigate('/content-blueprint');
+    } catch (err: any) {
+      console.error('Error rejecting content:', err);
+      setError('Failed to reject content. Please try again.');
+      setLoading(false);
+    }
   };
 
   const displayName = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User';
