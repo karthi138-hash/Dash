@@ -27,6 +27,7 @@ function ContentBlueprintPage() {
   const [waitingForWebhook, setWaitingForWebhook] = useState(false);
   const [generatedText, setGeneratedText] = useState<string | null>(null);
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
+  const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
   const [webhookTimeout, setWebhookTimeout] = useState(false);
   const [testingWebhook, setTestingWebhook] = useState(false);
 
@@ -353,32 +354,39 @@ function ContentBlueprintPage() {
             throw new Error('Webhook returned invalid JSON');
           }
 
+          let extractedVideoUrl: string | null = null;
+
           if (Array.isArray(webhookData) && webhookData.length > 0) {
             const responseData = webhookData[0];
             console.log('Processing array response, first element:', responseData);
             extractedText = responseData.generated_text || responseData.facebookOutput?.[0] || null;
             extractedImageUrl = responseData.generated_image_url || responseData.url?.[0] || null;
+            extractedVideoUrl = responseData.generated_video_url || responseData.video_url || null;
           } else if (typeof webhookData === 'object' && webhookData !== null) {
             console.log('Processing object response');
             extractedText = webhookData.generated_text || webhookData.text || webhookData.facebookOutput?.[0] || null;
             extractedImageUrl = webhookData.generated_image_url || webhookData.url?.[0] || webhookData.image_url || null;
+            extractedVideoUrl = webhookData.generated_video_url || webhookData.video_url || null;
           }
 
           console.log('=== EXTRACTED DATA ===');
           console.log('Generated Text:', extractedText);
           console.log('Generated Image URL:', extractedImageUrl);
+          console.log('Generated Video URL:', extractedVideoUrl);
 
           setGeneratedText(extractedText);
           setGeneratedImageUrl(extractedImageUrl);
+          setGeneratedVideoUrl(extractedVideoUrl);
 
           if (draftId) {
-            if (extractedText || extractedImageUrl) {
+            if (extractedText || extractedImageUrl || extractedVideoUrl) {
               console.log('=== UPDATING DATABASE ===');
               console.log('Draft ID:', draftId);
 
               const updateData = {
                 generated_text: extractedText,
                 generated_image_url: extractedImageUrl,
+                generated_video_url: extractedVideoUrl,
                 generated_at: new Date().toISOString(),
                 status: 'content_generated',
               };
@@ -426,7 +434,7 @@ function ContentBlueprintPage() {
         setWaitingForWebhook(false);
       }
 
-      if (generatedText || generatedImageUrl) {
+      if (generatedText || generatedImageUrl || generatedVideoUrl) {
         setSuccess('Content generated successfully!');
       } else if (!webhookTimeout) {
         setSuccess('Draft created! Waiting for content generation...');
