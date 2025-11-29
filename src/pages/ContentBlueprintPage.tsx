@@ -30,6 +30,8 @@ function ContentBlueprintPage() {
   const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
   const [webhookTimeout, setWebhookTimeout] = useState(false);
   const [testingWebhook, setTestingWebhook] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [currentDraftId, setCurrentDraftId] = useState<string | null>(null);
 
   const [contentDraft, setContentDraft] = useState<ContentDraft>({
     idea: '',
@@ -101,9 +103,101 @@ function ContentBlueprintPage() {
     setContentDraft(prev => ({ ...prev, knowledgeBaseFile: file }));
   };
 
-  const handleAssetFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAssetFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] || null;
+
+    if (!file) {
+      setContentDraft(prev => ({ ...prev, assetFile: null }));
+      return;
+    }
+
+    setError(null);
+    setSuccess(null);
+
+    const fileType = file.type;
+    const format = contentDraft.format;
+
+    if (format === 'Image + Text' && !fileType.startsWith('image/')) {
+      setError('Please upload an image file (JPEG, PNG, etc.) for an Image + Text post.');
+      e.target.value = '';
+      return;
+    }
+
+    if (format === 'Video Post' && !fileType.startsWith('video/')) {
+      setError('Please upload a video file (MP4, MOV, etc.) for a Video Post.');
+      e.target.value = '';
+      return;
+    }
+
     setContentDraft(prev => ({ ...prev, assetFile: file }));
+
+    if (!user?.id) {
+      setError('User not authenticated. Please sign in to upload files.');
+      return;
+    }
+
+    setUploadingFile(true);
+
+    try {
+      const timestamp = Date.now();
+      const fileExtension = file.name.split('.').pop();
+      const filePath = `OwnMedia/user-${user.id}/${timestamp}_${file.name}`;
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('user-media')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false,
+        });
+
+      if (uploadError) {
+        throw uploadError;
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from('user-media')
+        .getPublicUrl(filePath);
+
+      const publicUrl = publicUrlData.publicUrl;
+
+      if (currentDraftId) {
+        const updateData: any = {};
+
+        if (format === 'Image + Text') {
+          updateData.generated_image_url = publicUrl;
+          setGeneratedImageUrl(publicUrl);
+        } else if (format === 'Video Post') {
+          updateData.generated_video_url = publicUrl;
+          setGeneratedVideoUrl(publicUrl);
+        }
+
+        const { error: updateError } = await supabase
+          .from('content_drafts')
+          .update(updateData)
+          .eq('id', currentDraftId);
+
+        if (updateError) {
+          throw updateError;
+        }
+
+        setSuccess(`${format === 'Image + Text' ? 'Image' : 'Video'} uploaded successfully and draft updated!`);
+      } else {
+        if (format === 'Image + Text') {
+          setGeneratedImageUrl(publicUrl);
+        } else if (format === 'Video Post') {
+          setGeneratedVideoUrl(publicUrl);
+        }
+        setSuccess(`${format === 'Image + Text' ? 'Image' : 'Video'} uploaded successfully! It will be saved when you generate the content draft.`);
+      }
+
+    } catch (err: any) {
+      console.error('Upload error:', err);
+      setError(`Failed to upload file: ${err.message}`);
+      setContentDraft(prev => ({ ...prev, assetFile: null }));
+      e.target.value = '';
+    } finally {
+      setUploadingFile(false);
+    }
   };
 
   const handleTestWebhook = async (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -302,6 +396,24 @@ function ContentBlueprintPage() {
       console.log('Draft saved successfully:', data);
 
       const draftId = data[0]?.id;
+      setCurrentDraftId(draftId);
+
+      if (contentDraft.assetSource === 'Upload My Own' && (generatedImageUrl || generatedVideoUrl)) {
+        const initialUpdateData: any = {};
+        if (contentDraft.format === 'Image + Text' && generatedImageUrl) {
+          initialUpdateData.generated_image_url = generatedImageUrl;
+        }
+        if (contentDraft.format === 'Video Post' && generatedVideoUrl) {
+          initialUpdateData.generated_video_url = generatedVideoUrl;
+        }
+
+        if (Object.keys(initialUpdateData).length > 0) {
+          await supabase
+            .from('content_drafts')
+            .update(initialUpdateData)
+            .eq('id', draftId);
+        }
+      }
 
       console.log('Preparing to send webhook with payload:', {
         ...webhookPayload,
@@ -311,7 +423,10 @@ function ContentBlueprintPage() {
       setWaitingForWebhook(true);
       setWebhookTimeout(false);
       setGeneratedText(null);
-      setGeneratedImageUrl(null);
+      if (contentDraft.assetSource !== 'Upload My Own') {
+        setGeneratedImageUrl(null);
+        setGeneratedVideoUrl(null);
+      }
 
       let extractedText = null;
       let extractedImageUrl = null;
@@ -678,12 +793,25 @@ function ContentBlueprintPage() {
                         />
                         <label
                           htmlFor="assetFile"
-                          className="flex items-center justify-center gap-2 w-full px-4 py-3 border-2 border-dashed border-slate-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-all cursor-pointer text-slate-600 font-medium"
+                          className={`flex items-center justify-center gap-2 w-full px-4 py-3 border-2 border-dashed rounded-lg transition-all font-medium ${
+                            uploadingFile
+                              ? 'border-blue-400 bg-blue-50 cursor-wait text-blue-700'
+                              : 'border-slate-300 hover:border-blue-400 hover:bg-blue-50 cursor-pointer text-slate-600'
+                          }`}
                         >
-                          <Upload className="w-5 h-5" />
-                          {contentDraft.assetFile
-                            ? `Change ${contentDraft.format === 'Image + Text' ? 'Image' : 'Video'} File`
-                            : `Upload ${contentDraft.format === 'Image + Text' ? 'Image' : 'Video'} File`}
+                          {uploadingFile ? (
+                            <>
+                              <Loader2 className="w-5 h-5 animate-spin" />
+                              Uploading...
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="w-5 h-5" />
+                              {contentDraft.assetFile
+                                ? `Change ${contentDraft.format === 'Image + Text' ? 'Image' : 'Video'} File`
+                                : `Upload ${contentDraft.format === 'Image + Text' ? 'Image' : 'Video'} File`}
+                            </>
+                          )}
                         </label>
                       </div>
                       {contentDraft.assetFile && (
