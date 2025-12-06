@@ -65,7 +65,7 @@ export default function LandingPage() {
       title: 'Lead Generation',
       description: 'Capture and nurture leads automatically. Transform visitors into customers with intelligent workflows.',
       gradient: 'from-pink-500 to-purple-500',
-      onClick: undefined,
+      onClick: () => window.open('https://exclusive-urban-fash-qh61.bolt.host/', '_blank'),
     },
     {
       icon: MessageSquare,
