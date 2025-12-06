@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Bot, LogOut, CheckCircle2, XCircle, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { signOut } from '../lib/auth';
-import type { User } from '@supabase/supabase-js';
+import { useAuth } from '../lib/authContext';
+import { Sidebar } from '../components/Sidebar';
 
 interface ContentDraft {
   id: string;
@@ -24,29 +24,17 @@ interface ContentDraft {
 
 function ContentReviewPage() {
   const navigate = useNavigate();
-  const [user, setUser] = useState<User | null>(null);
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [fetchingContent, setFetchingContent] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [latestDraft, setLatestDraft] = useState<ContentDraft | null>(null);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchLatestContent(session.user.id);
-      }
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchLatestContent(session.user.id);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
+    if (user?.id) {
+      fetchLatestContent(user.id);
+    }
+  }, [user]);
 
   const fetchLatestContent = async (userId: string) => {
     setFetchingContent(true);
@@ -71,15 +59,6 @@ function ContentReviewPage() {
       setError('Failed to load content. Please try again.');
     } finally {
       setFetchingContent(false);
-    }
-  };
-
-  const handleSignOut = async () => {
-    try {
-      await signOut();
-      navigate('/');
-    } catch (error) {
-      console.error('Error signing out:', error);
     }
   };
 
@@ -153,8 +132,6 @@ function ContentReviewPage() {
     }
   };
 
-  const displayName = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User';
-
   const contentText = latestDraft?.generated_text || '';
   const imageUrl = latestDraft?.generated_image_url || '';
   const videoUrl = latestDraft?.generated_video_url || '';
@@ -164,40 +141,21 @@ function ContentReviewPage() {
   const platform = latestDraft?.platform || '';
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
-      <header className="border-b border-slate-200 bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2">
-            <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-              <Bot className="w-6 h-6 text-white" />
-            </div>
-            <span className="text-2xl font-bold text-slate-900">Dash.ai</span>
-          </Link>
+    <div className="flex min-h-screen bg-gradient-to-br from-orange-50/30 via-white to-pink-50/30">
+      <Sidebar />
 
-          <div className="flex items-center gap-4">
-            <span className="text-slate-700 font-medium">
-              Welcome, {displayName}
-            </span>
-            <button
-              onClick={handleSignOut}
-              className="flex items-center gap-2 text-slate-700 hover:text-slate-900 font-medium transition-colors"
-            >
-              <LogOut className="w-4 h-4" />
-              Sign Out
-            </button>
+      <main className="flex-1 overflow-y-auto">
+        <div className="max-w-4xl mx-auto px-6 py-12">
+          <div className="mb-8 text-center">
+            <h1 className="text-4xl font-bold bg-gradient-to-r from-orange-500 to-pink-500 bg-clip-text text-transparent mb-3">
+              Review Generated Content
+            </h1>
+            <p className="text-lg text-gray-700">
+              Review your AI-generated social media post
+            </p>
           </div>
-        </div>
-      </header>
 
-      <main className="max-w-4xl mx-auto px-6 py-12">
-        <div className="mb-8 text-center">
-          <h1 className="text-4xl font-bold text-slate-900 mb-3">Review Generated Content</h1>
-          <p className="text-lg text-slate-600">
-            Review your AI-generated social media post
-          </p>
-        </div>
-
-        <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
+          <div className="bg-white rounded-2xl shadow-xl border-2 border-orange-200/50 overflow-hidden">
           {error && (
             <div className="m-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-3">
               <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
@@ -207,8 +165,8 @@ function ContentReviewPage() {
 
           {fetchingContent ? (
             <div className="p-12 text-center">
-              <Loader2 className="w-12 h-12 text-blue-600 animate-spin mx-auto mb-4" />
-              <p className="text-slate-600 text-lg">Loading content...</p>
+              <Loader2 className="w-12 h-12 text-orange-600 animate-spin mx-auto mb-4" />
+              <p className="text-gray-700 text-lg">Loading content...</p>
             </div>
           ) : (
             <>
@@ -221,7 +179,7 @@ function ContentReviewPage() {
                     </div>
                     <button
                       onClick={handleRefresh}
-                      className="flex items-center gap-2 px-4 py-2 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                      className="flex items-center gap-2 px-4 py-2 text-sm text-orange-600 hover:text-orange-700 hover:bg-orange-50 rounded-lg transition-colors"
                     >
                       <RefreshCw className="w-4 h-4" />
                       Refresh
@@ -265,7 +223,7 @@ function ContentReviewPage() {
                   <div>
                     <p className="text-sm font-semibold text-slate-700 mb-4">User Uploaded Image</p>
                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-12 text-center">
-                      <Loader2 className="w-12 h-12 text-blue-600 animate-spin mx-auto mb-4" />
+                      <Loader2 className="w-12 h-12 text-orange-600 animate-spin mx-auto mb-4" />
                       <p className="text-slate-700 font-semibold mb-2">Media is processing</p>
                       <p className="text-slate-500 text-sm">Your uploaded image is being processed. Please wait...</p>
                     </div>
@@ -312,7 +270,7 @@ function ContentReviewPage() {
                   <div>
                     <p className="text-sm font-semibold text-slate-700 mb-4">User Uploaded Video</p>
                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-12 text-center">
-                      <Loader2 className="w-12 h-12 text-blue-600 animate-spin mx-auto mb-4" />
+                      <Loader2 className="w-12 h-12 text-orange-600 animate-spin mx-auto mb-4" />
                       <p className="text-slate-700 font-semibold mb-2">Media is processing</p>
                       <p className="text-slate-500 text-sm">Your uploaded video is being processed. Please wait...</p>
                     </div>
@@ -353,7 +311,7 @@ function ContentReviewPage() {
                     <p className="text-slate-600 text-lg">No content available to review</p>
                     <Link
                       to="/content-blueprint"
-                      className="inline-block mt-4 text-blue-600 hover:text-blue-700 font-medium"
+                      className="inline-block mt-4 text-orange-600 hover:text-orange-700 font-medium"
                     >
                       Create New Content
                     </Link>
@@ -375,7 +333,7 @@ function ContentReviewPage() {
                     <button
                       onClick={handleApprove}
                       disabled={loading}
-                      className="flex items-center justify-center gap-2 px-6 py-4 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-all hover:shadow-xl hover:shadow-green-600/30 disabled:bg-slate-400 disabled:cursor-not-allowed"
+                      className="flex items-center justify-center gap-2 px-6 py-4 bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white rounded-lg font-semibold transition-all hover:shadow-xl hover:shadow-orange-500/30 disabled:from-slate-400 disabled:to-slate-400 disabled:cursor-not-allowed"
                     >
                       {loading ? (
                         <>
@@ -398,11 +356,6 @@ function ContentReviewPage() {
             </>
           )}
         </div>
-
-        <div className="text-center mt-8">
-          <Link to="/content-blueprint" className="text-slate-600 hover:text-slate-900 transition-colors font-medium">
-            Back to Content Blueprint
-          </Link>
         </div>
       </main>
     </div>
